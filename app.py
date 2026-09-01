@@ -1,4 +1,5 @@
 import datetime
+import io
 import pandas as pd
 import streamlit as st
 from config.settings import CATEGORIAS
@@ -11,8 +12,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📈 Monitor de Oportunidades (MM200 + TradingView)")
-st.markdown("Varredura técnica combinando MM200, RSI, Volume e acionamento direto do TradingView.")
+st.title("📈 Monitor de Oportunidades (MM200 + Exportação)")
+st.markdown("Varredura técnica combinando MM200, RSI, Volume, TradingView e Exportação de Relatórios.")
 
 # Barra Lateral - Filtro Hierárquico
 st.sidebar.header("1. Seleção de Mercado")
@@ -51,7 +52,7 @@ col2.metric("Segmento / Setor", subcategoria_selecionada)
 st.info(f"📌 **Total de ativos prontos para varredura nesta categoria:** {len(tickers_lista)}")
 
 if st.button("🚀 Iniciar Varredura de Mercado"):
-    with st.spinner("Analisando mercado e gerando links de gráficos..."):
+    with st.spinner("Analisando mercado, calculando indicadores e preparando relatório..."):
         dados_fechamento, dados_volume = obter_dados_ativos(tickers_lista)
         
         if not dados_fechamento.empty:
@@ -84,6 +85,35 @@ if st.button("🚀 Iniciar Varredura de Mercado"):
                         )
                     },
                     use_container_width=True
+                )
+                
+                # --- ÁREA DE EXPORTAÇÃO (ITEM 4) ---
+                st.markdown("### 📥 Exportar Resultados")
+                exp_col1, exp_col2 = st.columns(2)
+                
+                data_hoje = datetime.date.today().strftime("%Y-%m-%d")
+                nome_arquivo_base = f"oportunidades_mm200_{mercado_selecionado.lower().replace(' ', '_')}_{data_hoje}"
+                
+                # Exportação CSV
+                csv_data = df_resultado.to_csv(index=False).encode('utf-8')
+                exp_col1.download_button(
+                    label="📄 Baixar em CSV",
+                    data=csv_data,
+                    file_name=f"{nome_arquivo_base}.csv",
+                    mime="text/csv"
+                )
+                
+                # Exportação Excel (.xlsx)
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_resultado.to_excel(writer, index=False, sheet_name='Oportunidades')
+                buffer.seek(0)
+                
+                exp_col2.download_button(
+                    label="📊 Baixar em Excel (.xlsx)",
+                    data=buffer,
+                    file_name=f"{nome_arquivo_base}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             else:
                 st.warning("Nenhum ativo desta categoria atendeu aos critérios de MM200 e RSI selecionados.")
