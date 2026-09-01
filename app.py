@@ -12,25 +12,22 @@ st.set_page_config(
 )
 
 st.title("📈 Monitor de Oportunidades (MM200)")
-st.markdown("Varredura estruturada de ativos por mercado, setor e classe de ativos.")
+st.markdown("Varredura de ativos próximos da Média Móvel de 200 períodos com identificação de Suporte e Resistência.")
 
 # Barra Lateral - Filtro Hierárquico
 st.sidebar.header("1. Seleção de Mercado")
 
-# Nível 1: Mercado principal
 mercado_selecionado = st.sidebar.selectbox(
     "Escolha o Mercado (1º Nível):",
     list(CATEGORIAS.keys())
 )
 
-# Nível 2: Setor / Subcategoria
 subcategorias = list(CATEGORIAS[mercado_selecionado].keys())
 subcategoria_selecionada = st.sidebar.selectbox(
     "Escolha o Setor / Segmento (2º Nível):",
     subcategorias
 )
 
-# Obtenção dos Tickers padrão da escolha
 lista_padrao = CATEGORIAS[mercado_selecionado][subcategoria_selecionada]
 
 st.sidebar.markdown("---")
@@ -53,13 +50,23 @@ col2.metric("Segmento / Setor", subcategoria_selecionada)
 st.info(f"📌 **Total de ativos prontos para varredura nesta categoria:** {len(tickers_lista)}")
 
 if st.button("🚀 Iniciar Varredura de Mercado"):
-    with st.spinner("Processando cotações em lotes e calculando MM200..."):
+    with st.spinner("Processando cotações e analisando tendências da MM200..."):
         dados = obter_dados_ativos(tickers_lista)
         
         if not dados.empty:
             df_resultado = triagem_mm200(dados, percentual_limite=margem_limite)
             
             if not df_resultado.empty:
+                # Métricas rápidas do resultado
+                qtd_suporte = len(df_resultado[df_resultado['Condição / Sinal'].str.contains("Suporte")])
+                qtd_resistencia = len(df_resultado[df_resultado['Condição / Sinal'].str.contains("Resistência")])
+                
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total de Oportunidades", len(df_resultado))
+                m2.metric("🟢 Em Zona de Suporte", qtd_suporte)
+                m3.metric("🔴 Em Zona de Resistência", qtd_resistencia)
+                
+                st.markdown("---")
                 st.success(f"Encontradas {len(df_resultado)} oportunidades a menos de {margem_limite}% da MM200!")
                 st.dataframe(df_resultado, use_container_width=True)
             else:
