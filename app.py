@@ -1,7 +1,7 @@
 import datetime
 import pandas as pd
 import streamlit as st
-from config.settings import INDICES, TICKERS_IBOVESPA, TICKERS_US_PRINCIPAIS
+from config.settings import INDICES, TICKERS_IBOVESPA, TICKERS_US_PRINCIPAIS, TICKERS_CRIPTO
 from src.scanner import obter_dados_ativos, triagem_mm200
 
 # Configuração da página no Streamlit
@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("📈 Monitor de Oportunidades (MM200)")
-st.markdown("Acompanhe os ativos do Ibovespa, Nasdaq e NYSE próximos da Média Móvel de 200 períodos.")
+st.markdown("Acompanhe Ações (B3, Nasdaq, NYSE) e Criptomoedas próximas da Média Móvel de 200 períodos.")
 
 # Barra lateral para configurações de filtro
 st.sidebar.header("Filtros de Busca")
@@ -21,17 +21,25 @@ margem_limite = st.sidebar.slider("Proximidade da MM200 (%)", 1.0, 10.0, 5.0, 0.
 # Seleção de Mercado
 opcao_mercado = st.sidebar.selectbox(
     "Escolha o Mercado / Lista:",
-    ["Ibovespa (B3)", "US - Nasdaq & NYSE (Principais)", "Todos Combinados", "Inserção Manual"]
+    [
+        "Ibovespa (B3)", 
+        "US - Nasdaq & NYSE (Principais)", 
+        "Top 20 Criptomoedas 🪙", 
+        "Todos Combinados", 
+        "Inserção Manual"
+    ]
 )
 
 if opcao_mercado == "Ibovespa (B3)":
     lista_padrao = TICKERS_IBOVESPA
 elif opcao_mercado == "US - Nasdaq & NYSE (Principais)":
     lista_padrao = TICKERS_US_PRINCIPAIS
+elif opcao_mercado == "Top 20 Criptomoedas 🪙":
+    lista_padrao = TICKERS_CRIPTO
 elif opcao_mercado == "Todos Combinados":
-    lista_padrao = TICKERS_IBOVESPA + TICKERS_US_PRINCIPAIS
+    lista_padrao = TICKERS_IBOVESPA + TICKERS_US_PRINCIPAIS + TICKERS_CRIPTO
 else:
-    lista_padrao = ["PETR4.SA", "VALE3.SA", "AAPL", "MSFT"]
+    lista_padrao = ["PETR4.SA", "VALE3.SA", "AAPL", "BTC-USD", "ETH-USD"]
 
 tickers_input = st.sidebar.text_area(
     "Tickers selecionados (edite se necessário):", 
