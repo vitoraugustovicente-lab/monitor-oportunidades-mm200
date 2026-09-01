@@ -11,8 +11,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📈 Monitor de Oportunidades (MM200 + RSI & Volume)")
-st.markdown("Varredura técnica combinando Média Móvel de 200 períodos, Índice de Força Relativa (RSI) e Liquidez.")
+st.title("📈 Monitor de Oportunidades (MM200 + TradingView)")
+st.markdown("Varredura técnica combinando MM200, RSI, Volume e acionamento direto do TradingView.")
 
 # Barra Lateral - Filtro Hierárquico
 st.sidebar.header("1. Seleção de Mercado")
@@ -33,9 +33,7 @@ lista_padrao = CATEGORIAS[mercado_selecionado][subcategoria_selecionada]
 st.sidebar.markdown("---")
 st.sidebar.header("2. Parâmetros de Análise")
 margem_limite = st.sidebar.slider("Proximidade da MM200 (%)", 1.0, 10.0, 5.0, 0.5)
-
-# Filtro Adicional por RSI máximo
-rsi_filtro = st.sidebar.slider("RSI Máximo (Filtrar Sobrevendidos)", 20, 100, 100, 5, help="Selecione 30 ou 40 para encontrar apenas ativos muito sobrevendidos.")
+rsi_filtro = st.sidebar.slider("RSI Máximo (Filtrar Sobrevendidos)", 20, 100, 100, 5)
 
 tickers_input = st.sidebar.text_area(
     "Ativos a analisar (edite conforme necessário):",
@@ -53,7 +51,7 @@ col2.metric("Segmento / Setor", subcategoria_selecionada)
 st.info(f"📌 **Total de ativos prontos para varredura nesta categoria:** {len(tickers_lista)}")
 
 if st.button("🚀 Iniciar Varredura de Mercado"):
-    with st.spinner("Processando cotações, volumes e calculando RSI (14)..."):
+    with st.spinner("Analisando mercado e gerando links de gráficos..."):
         dados_fechamento, dados_volume = obter_dados_ativos(tickers_lista)
         
         if not dados_fechamento.empty:
@@ -74,8 +72,19 @@ if st.button("🚀 Iniciar Varredura de Mercado"):
                 m3.metric("🔴 Em Zona de Resistência", qtd_resistencia)
                 
                 st.markdown("---")
-                st.success(f"Encontradas {len(df_resultado)} oportunidades dentro dos parâmetros selecionados!")
-                st.dataframe(df_resultado, use_container_width=True)
+                st.success(f"Encontradas {len(df_resultado)} oportunidades dentro dos parâmetros!")
+                
+                # Exibição com Coluna de Link Clicável
+                st.dataframe(
+                    df_resultado,
+                    column_config={
+                        "Gráfico": st.column_config.LinkColumn(
+                            "Gráfico TradingView",
+                            display_text="Abrir Chart 📊"
+                        )
+                    },
+                    use_container_width=True
+                )
             else:
                 st.warning("Nenhum ativo desta categoria atendeu aos critérios de MM200 e RSI selecionados.")
         else:
