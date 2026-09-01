@@ -2,6 +2,19 @@ import time
 import pandas as pd
 import yfinance as yf
 
+def gerar_link_tradingview(ticker):
+    """Gera a URL direta do gráfico no TradingView com base no mercado do ativo."""
+    if ticker.endswith(".SA"):
+        codigo = ticker.replace(".SA", "")
+        symbol = f"BMFBOVESPA:{codigo}"
+    elif ticker.endswith("-USD"):
+        codigo = ticker.replace("-USD", "USD")
+        symbol = f"BINANCE:{codigo}T"
+    else:
+        symbol = ticker
+        
+    return f"https://br.tradingview.com/chart/?symbol={symbol}"
+
 def calcular_rsi(serie, periodos=14):
     """Calcula o Índice de Força Relativa (RSI/IFR) de 14 períodos."""
     delta = serie.diff()
@@ -13,9 +26,7 @@ def calcular_rsi(serie, periodos=14):
     return rsi
 
 def obter_dados_ativos(tickers, dias_historico=300, tamanho_lote=40):
-    """
-    Baixa dados em lotes fracionados retornando Preço de Fechamento e Volume.
-    """
+    """Baixa dados em lotes fracionados retornando Preço de Fechamento e Volume."""
     if not tickers:
         return pd.DataFrame(), pd.DataFrame()
         
@@ -32,7 +43,6 @@ def obter_dados_ativos(tickers, dias_historico=300, tamanho_lote=40):
                 threads=True
             )
             
-            # Extração de Fechamento e Volume
             if len(lote) == 1:
                 df_close = dados_lote['Close'].to_frame(name=lote[0])
                 df_vol = dados_lote['Volume'].to_frame(name=lote[0])
@@ -60,9 +70,7 @@ def obter_dados_ativos(tickers, dias_historico=300, tamanho_lote=40):
     return pd.DataFrame(), pd.DataFrame()
 
 def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100):
-    """
-    Calcula MM200, distância percentual, tendência (Suporte/Resistência), RSI e Volume Médio.
-    """
+    """Calcula MM200, tendência, RSI, Volume e adiciona link direto ao TradingView."""
     resultados = []
     
     if dados_fechamento.empty:
@@ -78,26 +86,21 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
         preco_atual = serie_preco.iloc[-1]
         mm200 = serie_preco.rolling(window=200).mean().iloc[-1]
         
-        # Cálculo de Distância %
         distancia_pct = ((preco_atual - mm200) / mm200) * 100
         
-        # Cálculo de RSI (14)
         rsi_serie = calcular_rsi(serie_preco)
         rsi_atual = rsi_serie.iloc[-1] if not rsi_serie.empty else None
         
-        # Cálculo de Volume Médio Diário (últimos 20 dias em Milhões)
         if not serie_vol.empty and len(serie_vol) >= 20:
             vol_medio_20d = (serie_vol.iloc[-20:] * serie_preco.iloc[-20:]).mean() / 1_000_000
         else:
             vol_medio_20d = 0.0
         
-        # Aplica os Filtros (Margem da MM200 e Filtro de RSI Opcional)
         if abs(distancia_pct) <= percentual_limite:
             if rsi_atual is not None and rsi_atual <= rsi_maximo:
                 
                 condicao = "🟢 Suporte (Acima)" if preco_atual >= mm200 else "🔴 Resistência (Abaixo)"
                 
-                # Classificação rápida do RSI
                 if rsi_atual <= 30:
                     status_rsi = f"{round(rsi_atual, 1)} (Sobrevendido 🔥)"
                 elif rsi_atual >= 70:
@@ -105,8 +108,11 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
                 else:
                     status_rsi = f"{round(rsi_atual, 1)}"
                 
+                url_tradingview = gerar_link_tradingview(ticker)
+                
                 resultados.append({
                     'Ativo': ticker,
+                    'Gráfico': url_tradingview,
                     'Preço Atual': round(preco_atual, 2),
                     'MM200': round(mm200, 2),
                     'Distância (%)': round(distancia_pct, 2),
