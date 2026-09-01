@@ -32,3 +32,11 @@ TICKERS_US_PRINCIPAIS = [
     "ORCL", "TXN", "WMT", "PM", "PFE", "INTC", "AMGN", "HON", "LOW", "IBM", "BA",
     "GE", "CAT", "GS", "MS", "SBUX", "BLK", "NOW", "INTU", "AXP", "QCOM", "C"
 ]
+
+# 20 Maiores Criptomoedas por Capitalização de Mercado
+TICKERS_CRIPTO = [
+    "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD",
+    "ADA-USD", "DOGE-USD", "AVAX-USD", "SHIB-USD", "DOT-USD",
+    "LINK-USD", "BCH-USD", "NEAR-USD", "LTC-USD", "MATIC-USD",
+    "UNI-USD", "ICP-USD", "APT-USD", "ETC-USD", "XLM-USD"
+]
