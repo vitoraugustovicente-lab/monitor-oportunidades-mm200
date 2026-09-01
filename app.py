@@ -11,8 +11,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📈 Monitor de Oportunidades (MM200)")
-st.markdown("Varredura de ativos próximos da Média Móvel de 200 períodos com identificação de Suporte e Resistência.")
+st.title("📈 Monitor de Oportunidades (MM200 + RSI & Volume)")
+st.markdown("Varredura técnica combinando Média Móvel de 200 períodos, Índice de Força Relativa (RSI) e Liquidez.")
 
 # Barra Lateral - Filtro Hierárquico
 st.sidebar.header("1. Seleção de Mercado")
@@ -34,10 +34,13 @@ st.sidebar.markdown("---")
 st.sidebar.header("2. Parâmetros de Análise")
 margem_limite = st.sidebar.slider("Proximidade da MM200 (%)", 1.0, 10.0, 5.0, 0.5)
 
+# Filtro Adicional por RSI máximo
+rsi_filtro = st.sidebar.slider("RSI Máximo (Filtrar Sobrevendidos)", 20, 100, 100, 5, help="Selecione 30 ou 40 para encontrar apenas ativos muito sobrevendidos.")
+
 tickers_input = st.sidebar.text_area(
     "Ativos a analisar (edite conforme necessário):",
     value=", ".join(lista_padrao),
-    height=150
+    height=130
 )
 
 tickers_lista = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
@@ -50,16 +53,20 @@ col2.metric("Segmento / Setor", subcategoria_selecionada)
 st.info(f"📌 **Total de ativos prontos para varredura nesta categoria:** {len(tickers_lista)}")
 
 if st.button("🚀 Iniciar Varredura de Mercado"):
-    with st.spinner("Processando cotações e analisando tendências da MM200..."):
-        dados = obter_dados_ativos(tickers_lista)
+    with st.spinner("Processando cotações, volumes e calculando RSI (14)..."):
+        dados_fechamento, dados_volume = obter_dados_ativos(tickers_lista)
         
-        if not dados.empty:
-            df_resultado = triagem_mm200(dados, percentual_limite=margem_limite)
+        if not dados_fechamento.empty:
+            df_resultado = triagem_mm200(
+                dados_fechamento, 
+                dados_volume, 
+                percentual_limite=margem_limite,
+                rsi_maximo=rsi_filtro
+            )
             
             if not df_resultado.empty:
-                # Métricas rápidas do resultado
-                qtd_suporte = len(df_resultado[df_resultado['Condição / Sinal'].str.contains("Suporte")])
-                qtd_resistencia = len(df_resultado[df_resultado['Condição / Sinal'].str.contains("Resistência")])
+                qtd_suporte = len(df_resultado[df_resultado['Condição'].str.contains("Suporte")])
+                qtd_resistencia = len(df_resultado[df_resultado['Condição'].str.contains("Resistência")])
                 
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Total de Oportunidades", len(df_resultado))
@@ -67,9 +74,9 @@ if st.button("🚀 Iniciar Varredura de Mercado"):
                 m3.metric("🔴 Em Zona de Resistência", qtd_resistencia)
                 
                 st.markdown("---")
-                st.success(f"Encontradas {len(df_resultado)} oportunidades a menos de {margem_limite}% da MM200!")
+                st.success(f"Encontradas {len(df_resultado)} oportunidades dentro dos parâmetros selecionados!")
                 st.dataframe(df_resultado, use_container_width=True)
             else:
-                st.warning("Nenhum ativo desta categoria está dentro da margem de proximidade configurada.")
+                st.warning("Nenhum ativo desta categoria atendeu aos critérios de MM200 e RSI selecionados.")
         else:
             st.error("Não foi possível carregar os dados dos ativos no momento. Tente novamente.")
