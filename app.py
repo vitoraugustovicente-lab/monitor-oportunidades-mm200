@@ -12,8 +12,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📈 Monitor de Oportunidades (MM200 + Exportação)")
-st.markdown("Varredura técnica combinando MM200, RSI, Volume, TradingView e Exportação de Relatórios.")
+st.title("📈 Monitor de Oportunidades (MM200 + Análise Combinada)")
+st.markdown("Varredura técnica inteligente com cruzamento de Média Móvel de 200 períodos e RSI.")
 
 # Barra Lateral - Filtro Hierárquico
 st.sidebar.header("1. Seleção de Mercado")
@@ -52,7 +52,7 @@ col2.metric("Segmento / Setor", subcategoria_selecionada)
 st.info(f"📌 **Total de ativos prontos para varredura nesta categoria:** {len(tickers_lista)}")
 
 if st.button("🚀 Iniciar Varredura de Mercado"):
-    with st.spinner("Analisando mercado, calculando indicadores e preparando relatório..."):
+    with st.spinner("Analisando cotações, aplicando filtros e gerando diagnósticos..."):
         dados_fechamento, dados_volume = obter_dados_ativos(tickers_lista)
         
         if not dados_fechamento.empty:
@@ -64,18 +64,20 @@ if st.button("🚀 Iniciar Varredura de Mercado"):
             )
             
             if not df_resultado.empty:
-                qtd_suporte = len(df_resultado[df_resultado['Condição'].str.contains("Suporte")])
-                qtd_resistencia = len(df_resultado[df_resultado['Condição'].str.contains("Resistência")])
+                qtd_compras_fortes = len(df_resultado[df_resultado['Diagnóstico'].str.contains("Compra Forte")])
+                qtd_suporte = len(df_resultado[df_resultado['Condição MM200'].str.contains("Suporte")])
+                qtd_resistencia = len(df_resultado[df_resultado['Condição MM200'].str.contains("Resistência")])
                 
-                m1, m2, m3 = st.columns(3)
+                m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Total de Oportunidades", len(df_resultado))
-                m2.metric("🟢 Em Zona de Suporte", qtd_suporte)
-                m3.metric("🔴 Em Zona de Resistência", qtd_resistencia)
+                m2.metric("🎯 Compras Fortes (MM200 + RSI)", qtd_compras_fortes)
+                m3.metric("🟢 Em Zona de Suporte", qtd_suporte)
+                m4.metric("🔴 Em Zona de Resistência", qtd_resistencia)
                 
                 st.markdown("---")
                 st.success(f"Encontradas {len(df_resultado)} oportunidades dentro dos parâmetros!")
                 
-                # Exibição com Coluna de Link Clicável
+                # Exibição da tabela configurada
                 st.dataframe(
                     df_resultado,
                     column_config={
@@ -87,14 +89,13 @@ if st.button("🚀 Iniciar Varredura de Mercado"):
                     use_container_width=True
                 )
                 
-                # --- ÁREA DE EXPORTAÇÃO (ITEM 4) ---
-                st.markdown("### 📥 Exportar Resultados")
+                # Área de Exportação
+                st.markdown("### 📥 Exportar Relatório")
                 exp_col1, exp_col2 = st.columns(2)
                 
                 data_hoje = datetime.date.today().strftime("%Y-%m-%d")
                 nome_arquivo_base = f"oportunidades_mm200_{mercado_selecionado.lower().replace(' ', '_')}_{data_hoje}"
                 
-                # Exportação CSV
                 csv_data = df_resultado.to_csv(index=False).encode('utf-8')
                 exp_col1.download_button(
                     label="📄 Baixar em CSV",
@@ -103,7 +104,6 @@ if st.button("🚀 Iniciar Varredura de Mercado"):
                     mime="text/csv"
                 )
                 
-                # Exportação Excel (.xlsx)
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df_resultado.to_excel(writer, index=False, sheet_name='Oportunidades')
