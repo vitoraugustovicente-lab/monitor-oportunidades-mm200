@@ -25,8 +25,28 @@ def calcular_rsi(serie, periodos=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-def obter_dados_ativos(tickers, dias_historico=300, tamanho_lote=40):
-    """Baixa dados em lotes fracionados retornando Preço de Fechamento e Volume."""
+def classificar_analise_combinada(preco_atual, mm200, rsi_atual):
+    """Gera o diagnóstico operacional combinando MM200 e RSI."""
+    esta_acima_mm = preco_atual >= mm200
+    
+    if rsi_atual is None:
+        return "⚪ Sem Dados RSI"
+        
+    if esta_acima_mm and rsi_atual <= 35:
+        return "🎯 Compra Forte (Suporte + Sobrevendido)"
+    elif esta_acima_mm and rsi_atual < 50:
+        return "🟢 Neutro Autêntico (Suporte em Teste)"
+    elif esta_acima_mm and rsi_atual >= 70:
+        return "⚠️ Alerta de Correção (Esticado em Alta)"
+    elif not esta_acima_mm and rsi_atual >= 65:
+        return "🔴 Venda / Risco (Resistência + Sobrecomprado)"
+    elif not esta_acima_mm and rsi_atual <= 30:
+        return "⚡ Possível Repique (Abaixo da MM200)"
+    else:
+        return "🟡 Acompanhar / Neutro"
+
+def obter_dados_ativos(tickers, dias_historico=365, tamanho_lote=40):
+    """Baixa dados em lotes com auto_adjust=True para alinhar proventos com TradingView."""
     if not tickers:
         return pd.DataFrame(), pd.DataFrame()
         
@@ -39,6 +59,7 @@ def obter_dados_ativos(tickers, dias_historico=300, tamanho_lote=40):
             dados_lote = yf.download(
                 lote, 
                 period=f"{dias_historico}d", 
+                auto_adjust=True,
                 progress=False,
                 threads=True
             )
@@ -70,7 +91,7 @@ def obter_dados_ativos(tickers, dias_historico=300, tamanho_lote=40):
     return pd.DataFrame(), pd.DataFrame()
 
 def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100):
-    """Calcula MM200, tendência, RSI, Volume e adiciona link direto ao TradingView."""
+    """Calcula indicadores, análise combinada e gera links do TradingView."""
     resultados = []
     
     if dados_fechamento.empty:
@@ -101,6 +122,9 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
                 
                 condicao = "🟢 Suporte (Acima)" if preco_atual >= mm200 else "🔴 Resistência (Abaixo)"
                 
+                # Análise Combinada
+                diagnostico = classificar_analise_combinada(preco_atual, mm200, rsi_atual)
+                
                 if rsi_atual <= 30:
                     status_rsi = f"{round(rsi_atual, 1)} (Sobrevendido 🔥)"
                 elif rsi_atual >= 70:
@@ -113,10 +137,11 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
                 resultados.append({
                     'Ativo': ticker,
                     'Gráfico': url_tradingview,
+                    'Diagnóstico': diagnostico,
                     'Preço Atual': round(preco_atual, 2),
                     'MM200': round(mm200, 2),
                     'Distância (%)': round(distancia_pct, 2),
-                    'Condição': condicao,
+                    'Condição MM200': condicao,
                     'RSI (14)': status_rsi,
                     'Vol Médio (20d Mi)': round(vol_medio_20d, 2)
                 })
