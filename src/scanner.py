@@ -90,8 +90,8 @@ def obter_dados_ativos(tickers, dias_historico=365, tamanho_lote=40):
     
     return pd.DataFrame(), pd.DataFrame()
 
-def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100):
-    """Calcula indicadores, análise combinada e gera links do TradingView."""
+def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100, mao_financeira=12500.0):
+    """Calcula indicadores, análise combinada, plano de trade (Mão de R$ 12.500) e links."""
     resultados = []
     
     if dados_fechamento.empty:
@@ -121,9 +121,21 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
             if rsi_atual is not None and rsi_atual <= rsi_maximo:
                 
                 condicao = "🟢 Suporte (Acima)" if preco_atual >= mm200 else "🔴 Resistência (Abaixo)"
-                
-                # Análise Combinada
                 diagnostico = classificar_analise_combinada(preco_atual, mm200, rsi_atual)
+                
+                # --- CÁLCULO DO PLANO DE TRADE (R$ 12.500) ---
+                # Qtd de ações para dar R$ 12.500
+                qtd_acoes = int(mao_financeira // preco_atual) if preco_atual > 0 else 0
+                
+                # Stop Loss Sugerido: 2% abaixo da MM200 ou 5% do preço atual (o que for menor/mais seguro)
+                stop_sugerido = min(mm200 * 0.98, preco_atual * 0.95)
+                risco_por_acao = preco_atual - stop_sugerido
+                
+                # Alvo 1 (Realização Parcial - 1:1): Preço + Risco
+                alvo_rp = preco_atual + risco_por_acao
+                
+                # Alvo 2 (Alvo Final - 1:2): Preço + (2 * Risco)
+                alvo_final = preco_atual + (2 * risco_por_acao)
                 
                 if rsi_atual <= 30:
                     status_rsi = f"{round(rsi_atual, 1)} (Sobrevendido 🔥)"
@@ -138,10 +150,13 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
                     'Ativo': ticker,
                     'Gráfico': url_tradingview,
                     'Diagnóstico': diagnostico,
-                    'Preço Atual': round(preco_atual, 2),
+                    'Preço Entrada': round(preco_atual, 2),
+                    'Lote (Ações)': qtd_acoes,
+                    'Stop Loss (2% MM)': round(stop_sugerido, 2),
+                    'Alvo RP (1:1)': round(alvo_rp, 2),
+                    'Alvo Final (1:2)': round(alvo_final, 2),
                     'MM200': round(mm200, 2),
                     'Distância (%)': round(distancia_pct, 2),
-                    'Condição MM200': condicao,
                     'RSI (14)': status_rsi,
                     'Vol Médio (20d Mi)': round(vol_medio_20d, 2)
                 })
