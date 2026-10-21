@@ -1,4 +1,4 @@
-import time
+    import time
 import pandas as pd
 import yfinance as yf
 
@@ -91,7 +91,7 @@ def obter_dados_ativos(tickers, dias_historico=365, tamanho_lote=40):
     return pd.DataFrame(), pd.DataFrame()
 
 def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100, mao_financeira=12500.0):
-    """Calcula indicadores, análise combinada, plano de trade (Mão de R$ 12.500) e links."""
+    """Calcula indicadores, análise combinada, plano de trade e links."""
     resultados = []
     
     if dados_fechamento.empty:
@@ -120,21 +120,15 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
         if abs(distancia_pct) <= percentual_limite:
             if rsi_atual is not None and rsi_atual <= rsi_maximo:
                 
-                condicao = "🟢 Suporte (Acima)" if preco_atual >= mm200 else "🔴 Resistência (Abaixo)"
+                condicao_mm = "🟢 Suporte (Acima)" if preco_atual >= mm200 else "🔴 Resistência (Abaixo)"
                 diagnostico = classificar_analise_combinada(preco_atual, mm200, rsi_atual)
                 
-                # --- CÁLCULO DO PLANO DE TRADE (R$ 12.500) ---
-                # Qtd de ações para dar R$ 12.500
+                # Cálculo do Plano de Trade
                 qtd_acoes = int(mao_financeira // preco_atual) if preco_atual > 0 else 0
-                
-                # Stop Loss Sugerido: 2% abaixo da MM200 ou 5% do preço atual (o que for menor/mais seguro)
                 stop_sugerido = min(mm200 * 0.98, preco_atual * 0.95)
                 risco_por_acao = preco_atual - stop_sugerido
                 
-                # Alvo 1 (Realização Parcial - 1:1): Preço + Risco
                 alvo_rp = preco_atual + risco_por_acao
-                
-                # Alvo 2 (Alvo Final - 1:2): Preço + (2 * Risco)
                 alvo_final = preco_atual + (2 * risco_por_acao)
                 
                 if rsi_atual <= 30:
@@ -150,6 +144,7 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
                     'Ativo': ticker,
                     'Gráfico': url_tradingview,
                     'Diagnóstico': diagnostico,
+                    'Condição MM200': condicao_mm,
                     'Preço Entrada': round(preco_atual, 2),
                     'Lote (Ações)': qtd_acoes,
                     'Stop Loss (2% MM)': round(stop_sugerido, 2),
