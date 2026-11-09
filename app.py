@@ -7,7 +7,7 @@ import yfinance as yf
 from config.settings import CATEGORIAS
 from src.scanner import obter_dados_ativos, triagem_mm200
 
-# Configuração da página (apenas uma chamada no início)
+# Configuração da página
 st.set_page_config(
     page_title="Monitor de Oportunidades MM200 Semanal",
     page_icon="📈",
@@ -60,9 +60,8 @@ col2.metric("Segmento / Setor", subcategoria_selecionada)
 st.info(f"📌 **Total de ativos prontos para varredura nesta categoria:** {len(tickers_lista)}")
 
 if st.button("🚀 Iniciar Varredura de Mercado (Semanal)"):
-    with st.spinner("Analisando cotações semanais, aplicando MM200 e RSI..."):
-        # Executa a busca passando intervalo semanal e período para garantir histórico de 200 semanas
-       dados_fechamento, dados_volume = obter_dados_ativos(tickers_lista)
+    with st.spinner("Analisando cotações, aplicando MM200 e RSI..."):
+        dados_fechamento, dados_volume = obter_dados_ativos(tickers_lista)
         
         if not dados_fechamento.empty:
             df_resultado = triagem_mm200(
@@ -135,7 +134,7 @@ if st.button("🚀 Iniciar Varredura de Mercado (Semanal)"):
             st.error("Não foi possível carregar os dados dos ativos no momento. Tente novamente.")
 
 # ==========================================
-# VISUALIZAÇÃO GRÁFICA INDIVIDUAL (OPCIONAL)
+# VISUALIZAÇÃO GRÁFICA INDIVIDUAL
 # ==========================================
 st.markdown("---")
 st.subheader("🔍 Análise Gráfica Individual (Semanal)")
@@ -152,4 +151,3 @@ if ticker_grafico:
             
         df_grafico['MMA200 Semanal'] = df_grafico.iloc[:, 0].rolling(window=200).mean()
         st.line_chart(df_grafico)
-           
