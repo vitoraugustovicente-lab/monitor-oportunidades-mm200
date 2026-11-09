@@ -62,11 +62,7 @@ st.info(f"📌 **Total de ativos prontos para varredura nesta categoria:** {len(
 if st.button("🚀 Iniciar Varredura de Mercado (Semanal)"):
     with st.spinner("Analisando cotações semanais, aplicando MM200 e RSI..."):
         # Executa a busca passando intervalo semanal e período para garantir histórico de 200 semanas
-        dados_fechamento, dados_volume = obter_dados_ativos(
-            tickers_lista, 
-            periodo=periodo, 
-            intervalo="1wk"
-        )
+       dados_fechamento, dados_volume = obter_dados_ativos(tickers_lista)
         
         if not dados_fechamento.empty:
             df_resultado = triagem_mm200(
