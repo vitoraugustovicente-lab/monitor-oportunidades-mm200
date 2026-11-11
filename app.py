@@ -1,110 +1,153 @@
+import datetime
+import io
 import pandas as pd
-import numpy as np
+import streamlit as st
 import yfinance as yf
 
-def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk"):
-    """
-    Baixa dados com histórico longo (5 anos) no tempo gráfico semanal (1wk)
-    para garantir 200 barras para a MM200.
-    """
-    if not tickers:
-        return pd.DataFrame(), pd.DataFrame()
-        
-    try:
-        dados = yf.download(tickers, period=periodo, interval=intervalo, progress=False)
-        
-        if dados.empty:
-            return pd.DataFrame(), pd.DataFrame()
-            
-        if isinstance(dados.columns, pd.MultiIndex):
-            fechamento = dados['Close']
-            volume = dados['Volume']
-        else:
-            fechamento = dados[['Close']]
-            volume = dados[['Volume']]
-            
-        return fechamento, volume
-    except Exception as e:
-        print(f"Erro ao baixar dados: {e}")
-        return pd.DataFrame(), pd.DataFrame()
+from config.settings import CATEGORIAS
+from src.scanner import obter_dados_ativos, triagem_mm200
 
+# Configuração da página
+st.set_page_config(
+    page_title="Monitor de Oportunidades MM200 Semanal",
+    page_icon="📈",
+    layout="wide"
+)
 
-def gerar_link_tradingview(ticker_original):
-    """
-    Formata o link do TradingView de acordo com o mercado do ticker.
-    """
-    ticker_str = str(ticker_original).strip().upper()
-    
-    if ticker_str.endswith(".SA"):
-        simbolo = f"BMFBOVESPA:{ticker_str.replace('.SA', '')}"
-    elif "-USD" in ticker_str:
-        simbolo = f"CRYPTO:{ticker_str.replace('-USD', 'USD')}"
-    else:
-        simbolo = ticker_str
-        
-    return f"https://br.tradingview.com/chart/?symbol={simbolo}"
+st.title("📈 Monitor de Oportunidades (MM200 Semanal + Análise Combinada)")
+st.markdown("Varredura técnica inteligente com cruzamento de Média Móvel de 200 Semanas e RSI.")
 
+# ==========================================
+# BARRA LATERAL - FILTRO HIERÁRQUICO DE MERCADO
+# ==========================================
+st.sidebar.header("1. Seleção de Mercado")
 
-def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100):
-    """
-    Calcula a MM200 Semanal, RSI de 14 períodos e gera diagnósticos com link do TradingView na 3ª coluna.
-    """
-    resultados = []
-    
-    # Trata caso a busca tenha retornado apenas um ativo (Series em vez de DataFrame)
-    if isinstance(dados_fechamento, pd.Series):
-        dados_fechamento = dados_fechamento.to_frame()
+mercado_selecionado = st.sidebar.selectbox(
+    "Escolha o Mercado (1º Nível):",
+    list(CATEGORIAS.keys())
+)
+
+subcategorias = list(CATEGORIAS[mercado_selecionado].keys())
+subcategoria_selecionada = st.sidebar.selectbox(
+    "Escolha o Setor / Segmento (2º Nível):",
+    subcategorias
+)
+
+lista_padrao = CATEGORIAS[mercado_selecionado][subcategoria_selecionada]
+
+st.sidebar.markdown("---")
+st.sidebar.header("2. Parâmetros de Análise")
+margem_limite = st.sidebar.slider("Proximidade da MM200 (%)", 1.0, 10.0, 5.0, 0.5)
+rsi_filtro = st.sidebar.slider("RSI Máximo (Filtrar Sobrevendidos)", 20, 100, 100, 5)
+periodo = st.sidebar.selectbox("Período de Histórico:", ["5y", "10y", "max"], index=0)
+
+st.sidebar.markdown("---")
+tickers_input = st.sidebar.text_area(
+    "Ativos a analisar (edite se desejar):",
+    value=", ".join(lista_padrao),
+    height=130
+)
+
+tickers_lista = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+
+# ==========================================
+# PAINEL CENTRAL - MÉTRICAS E VARREDURA
+# ==========================================
+col1, col2 = st.columns(2)
+col1.metric("Mercado Selecionado", mercado_selecionado)
+col2.metric("Segmento / Setor", subcategoria_selecionada)
+
+st.info(f"📌 **Total de ativos prontos para varredura nesta categoria:** {len(tickers_lista)}")
+
+if st.button("🚀 Iniciar Varredura de Mercado (Semanal)"):
+    with st.spinner("Analisando cotações semanais, aplicando MM200 e RSI..."):
+        dados_fechamento, dados_volume = obter_dados_ativos(
+            tickers_lista, 
+            periodo=periodo, 
+            intervalo="1wk"
+        )
         
-    for ticker in dados_fechamento.columns:
-        serie_preco = dados_fechamento[ticker].dropna()
-        
-        # Precisa ter no mínimo 200 semanas de histórico
-        if len(serie_preco) < 200:
-            continue
+        if not dados_fechamento.empty:
+            df_resultado = triagem_mm200(
+                dados_fechamento, 
+                dados_volume, 
+                percentual_limite=margem_limite,
+                rsi_maximo=rsi_filtro
+            )
             
-        # 1. Cálculo da MM200 Semanal
-        mm200_serie = serie_preco.rolling(window=200).mean()
-        
-        preco_atual = float(serie_preco.iloc[-1])
-        mm200_atual = float(mm200_serie.iloc[-1])
-        
-        if pd.isna(mm200_atual):
-            continue
-            
-        distancia_pct = ((preco_atual - mm200_atual) / mm200_atual) * 100
-        
-        # 2. Cálculo do RSI (14 períodos)
-        delta = serie_preco.diff()
-        ganho = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        perda = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = ganho / perda
-        rsi_serie = 100 - (100 / (1 + rs))
-        rsi_atual = float(rsi_serie.iloc[-1]) if not pd.isna(rsi_serie.iloc[-1]) else 50.0
-        
-        # 3. Filtros
-        if abs(distancia_pct) <= percentual_limite and rsi_atual <= rsi_maximo:
-            condicao = "🟢 Suporte MM200" if preco_atual >= mm200_atual else "🔴 Resistência MM200"
-            
-            if preco_atual >= mm200_atual and rsi_atual <= 40:
-                diag = "🎯 Compra Forte (MM200 + RSI)"
-            elif preco_atual >= mm200_atual:
-                diag = "✅ Tendência de Alta (Acima MM200)"
-            else:
-                diag = "⚠️ Abaixo da MM200"
+            if not df_resultado.empty:
+                qtd_compras_fortes = len(df_resultado[df_resultado['Diagnóstico'].str.contains("Compra Forte", na=False)])
+                qtd_suporte = len(df_resultado[df_resultado['Condição MM200'].str.contains("Suporte", na=False)])
+                qtd_resistencia = len(df_resultado[df_resultado['Condição MM200'].str.contains("Resistência", na=False)])
                 
-            ticker_limpo = str(ticker).replace(".SA", "")
-            link_tv = gerar_link_tradingview(ticker)
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Total de Oportunidades", len(df_resultado))
+                m2.metric("🎯 Compras Fortes", qtd_compras_fortes)
+                m3.metric("🟢 Em Zona de Suporte", qtd_suporte)
+                m4.metric("🔴 Em Zona de Resistência", qtd_resistencia)
+                
+                st.markdown("---")
+                st.success(f"Encontradas {len(df_resultado)} oportunidades dentro dos parâmetros no gráfico semanal!")
+                
+                st.dataframe(
+                    df_resultado,
+                    column_config={
+                        "Gráfico": st.column_config.LinkColumn(
+                            "Gráfico TradingView",
+                            display_text="Abrir Chart 📊"
+                        )
+                    },
+                    use_container_width=True
+                )
+                
+                # ==========================================
+                # ÁREA DE EXPORTAÇÃO (CSV E EXCEL)
+                # ==========================================
+                st.markdown("### 📥 Exportar Relatório")
+                exp_col1, exp_col2 = st.columns(2)
+                
+                data_hoje = datetime.date.today().strftime("%Y-%m-%d")
+                nome_arquivo_base = f"oportunidades_mm200_semanal_{mercado_selecionado.lower().replace(' ', '_')}_{data_hoje}"
+                
+                csv_data = df_resultado.to_csv(index=False).encode('utf-8')
+                exp_col1.download_button(
+                    label="📄 Baixar em CSV",
+                    data=csv_data,
+                    file_name=f"{nome_arquivo_base}.csv",
+                    mime="text/csv"
+                )
+                
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_resultado.to_excel(writer, index=False, sheet_name='Oportunidades')
+                buffer.seek(0)
+                
+                exp_col2.download_button(
+                    label="📊 Baixar em Excel (.xlsx)",
+                    data=buffer,
+                    file_name=f"{nome_arquivo_base}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.warning("Nenhum ativo desta categoria atendeu aos critérios de MM200 e RSI selecionados.")
+        else:
+            st.error("Não foi possível carregar os dados dos ativos no momento. Tente novamente.")
+
+# ==========================================
+# VISUALIZAÇÃO GRÁFICA INDIVIDUAL
+# ==========================================
+st.markdown("---")
+st.subheader("🔍 Análise Gráfica Individual (Semanal)")
+ticker_grafico = st.selectbox("Selecione um ativo para visualizar o gráfico semanal:", tickers_lista)
+
+if ticker_grafico:
+    df_grafico = yf.download(ticker_grafico, period=periodo, interval="1wk", progress=False)
+    if not df_grafico.empty:
+        if isinstance(df_grafico.columns, pd.MultiIndex):
+            df_grafico = df_grafico['Close']
+            df_grafico.columns = [ticker_grafico]
+        else:
+            df_grafico = df_grafico[['Close']]
             
-            # Ordem exata das colunas: 1. Ticker | 2. Preço Atual | 3. Gráfico (Botão TradingView)
-            resultados.append({
-                "Ticker": ticker_limpo,
-                "Preço Atual": round(preco_atual, 2),
-                "Gráfico": link_tv,
-                "MM200 Semanal": round(mm200_atual, 2),
-                "Distância (%)": f"{distancia_pct:+.2f}%",
-                "RSI (14)": round(rsi_atual, 1),
-                "Condição MM200": condicao,
-                "Diagnóstico": diag
-            })
-            
-    return pd.DataFrame(resultados)
+        df_grafico['MMA200 Semanal'] = df_grafico.iloc[:, 0].rolling(window=200).mean()
+        st.line_chart(df_grafico)
