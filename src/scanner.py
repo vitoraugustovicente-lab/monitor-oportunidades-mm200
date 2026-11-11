@@ -1,164 +1,92 @@
-import time
 import pandas as pd
+import numpy as np
 import yfinance as yf
 
-def gerar_link_tradingview(ticker):
-    """Gera a URL direta do gráfico no TradingView com base no mercado do ativo."""
-    if ticker.endswith(".SA"):
-        codigo = ticker.replace(".SA", "")
-        symbol = f"BMFBOVESPA:{codigo}"
-    elif ticker.endswith("-USD"):
-        codigo = ticker.replace("-USD", "USD")
-        symbol = f"BINANCE:{codigo}T"
-    else:
-        symbol = ticker
-        
-    return f"https://br.tradingview.com/chart/?symbol={symbol}"
-
-def calcular_rsi(serie, periodos=14):
-    """Calcula o Índice de Força Relativa (RSI/IFR) de 14 períodos."""
-    delta = serie.diff()
-    ganho = (delta.where(delta > 0, 0)).rolling(window=periodos).mean()
-    perda = (-delta.where(delta < 0, 0)).rolling(window=periodos).mean()
-    
-    rs = ganho / perda
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-def classificar_analise_combinada(preco_atual, mm200, rsi_atual):
-    """Gera o diagnóstico operacional combinando MM200 e RSI."""
-    esta_acima_mm = preco_atual >= mm200
-    
-    if rsi_atual is None:
-        return "⚪ Sem Dados RSI"
-        
-    if esta_acima_mm and rsi_atual <= 35:
-        return "🎯 Compra Forte (Suporte + Sobrevendido)"
-    elif esta_acima_mm and rsi_atual < 50:
-        return "🟢 Neutro Autêntico (Suporte em Teste)"
-    elif esta_acima_mm and rsi_atual >= 70:
-        return "⚠️ Alerta de Correção (Esticado em Alta)"
-    elif not esta_acima_mm and rsi_atual >= 65:
-        return "🔴 Venda / Risco (Resistência + Sobrecomprado)"
-    elif not esta_acima_mm and rsi_atual <= 30:
-        return "⚡ Possível Repique (Abaixo da MM200)"
-    else:
-        return "🟡 Acompanhar / Neutro"
-
-def obter_dados_ativos(tickers, dias_historico=365, tamanho_lote=40):
-    """Baixa dados em lotes com auto_adjust=True para alinhar proventos com TradingView."""
+def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk"):
+    """
+    Baixa dados com histórico longo (5 anos) no tempo gráfico semanal (1wk)
+    para garantir 200 barras para a MM200.
+    """
     if not tickers:
         return pd.DataFrame(), pd.DataFrame()
         
-    todos_fechamentos = []
-    todos_volumes = []
-    
-    for i in range(0, len(tickers), tamanho_lote):
-        lote = tickers[i:i + tamanho_lote]
-        try:
-            dados_lote = yf.download(
-                lote, 
-                period=f"{dias_historico}d", 
-                auto_adjust=True,
-                progress=False,
-                threads=True
-            )
-            
-            if len(lote) == 1:
-                df_close = dados_lote['Close'].to_frame(name=lote[0])
-                df_vol = dados_lote['Volume'].to_frame(name=lote[0])
-            else:
-                df_close = dados_lote['Close']
-                df_vol = dados_lote['Volume']
-                
-            if not df_close.empty:
-                todos_fechamentos.append(df_close)
-                todos_volumes.append(df_vol)
-        except Exception as e:
-            print(f"Erro ao baixar lote {i//tamanho_lote + 1}: {e}")
-            
-        time.sleep(0.2)
-
-    if todos_fechamentos:
-        df_close_consolidado = pd.concat(todos_fechamentos, axis=1)
-        df_vol_consolidado = pd.concat(todos_volumes, axis=1)
+    try:
+        dados = yf.download(tickers, period=periodo, interval=intervalo, progress=False)
         
-        df_close_consolidado = df_close_consolidado.loc[:, ~df_close_consolidado.columns.duplicated()]
-        df_vol_consolidado = df_vol_consolidado.loc[:, ~df_vol_consolidado.columns.duplicated()]
-        
-        return df_close_consolidado, df_vol_consolidado
-    
-    return pd.DataFrame(), pd.DataFrame()
+        if dados.empty:
+            return pd.DataFrame(), pd.DataFrame()
+            
+        if isinstance(dados.columns, pd.MultiIndex):
+            fechamento = dados['Close']
+            volume = dados['Volume']
+        else:
+            fechamento = dados[['Close']]
+            volume = dados[['Volume']]
+            
+        return fechamento, volume
+    except Exception as e:
+        print(f"Erro ao baixar dados: {e}")
+        return pd.DataFrame(), pd.DataFrame()
 
-def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100, mao_financeira=12500.0):
-    """Calcula indicadores, análise combinada, plano de trade e links."""
+
+def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100):
+    """
+    Calcula a MM200 Semanal, RSI de 14 períodos e gera diagnósticos.
+    """
     resultados = []
     
-    if dados_fechamento.empty:
-        return pd.DataFrame(resultados)
-
+    # Trata caso a busca tenha retornado apenas um ativo (Series em vez de DataFrame)
+    if isinstance(dados_fechamento, pd.Series):
+        dados_fechamento = dados_fechamento.to_frame()
+        
     for ticker in dados_fechamento.columns:
         serie_preco = dados_fechamento[ticker].dropna()
-        serie_vol = dados_volume[ticker].dropna() if ticker in dados_volume.columns else pd.Series()
         
+        # Precisa ter no mínimo 200 semanas de histórico
         if len(serie_preco) < 200:
             continue
             
-        preco_atual = serie_preco.iloc[-1]
-        mm200 = serie_preco.rolling(window=200).mean().iloc[-1]
+        # 1. Cálculo da MM200 Semanal
+        mm200_serie = serie_preco.rolling(window=200).mean()
         
-        distancia_pct = ((preco_atual - mm200) / mm200) * 100
+        preco_atual = float(serie_preco.iloc[-1])
+        mm200_atual = float(mm200_serie.iloc[-1])
         
-        rsi_serie = calcular_rsi(serie_preco)
-        rsi_atual = rsi_serie.iloc[-1] if not rsi_serie.empty else None
-        
-        if not serie_vol.empty and len(serie_vol) >= 20:
-            vol_medio_20d = (serie_vol.iloc[-20:] * serie_preco.iloc[-20:]).mean() / 1_000_000
-        else:
-            vol_medio_20d = 0.0
-        
-        if abs(distancia_pct) <= percentual_limite:
-            if rsi_atual is not None and rsi_atual <= rsi_maximo:
-                
-                condicao_mm = "🟢 Suporte (Acima)" if preco_atual >= mm200 else "🔴 Resistência (Abaixo)"
-                diagnostico = classificar_analise_combinada(preco_atual, mm200, rsi_atual)
-                
-                # Cálculo do Plano de Trade
-                qtd_acoes = int(mao_financeira // preco_atual) if preco_atual > 0 else 0
-                stop_sugerido = min(mm200 * 0.98, preco_atual * 0.95)
-                risco_por_acao = preco_atual - stop_sugerido
-                
-                alvo_rp = preco_atual + risco_por_acao
-                alvo_final = preco_atual + (2 * risco_por_acao)
-                
-                if rsi_atual <= 30:
-                    status_rsi = f"{round(rsi_atual, 1)} (Sobrevendido 🔥)"
-                elif rsi_atual >= 70:
-                    status_rsi = f"{round(rsi_atual, 1)} (Sobrecomprado ⚠️)"
-                else:
-                    status_rsi = f"{round(rsi_atual, 1)}"
-                
-                url_tradingview = gerar_link_tradingview(ticker)
-                
-                resultados.append({
-                    'Ativo': ticker,
-                    'Gráfico': url_tradingview,
-                    'Diagnóstico': diagnostico,
-                    'Condição MM200': condicao_mm,
-                    'Preço Entrada': round(preco_atual, 2),
-                    'Lote (Ações)': qtd_acoes,
-                    'Stop Loss (2% MM)': round(stop_sugerido, 2),
-                    'Alvo RP (1:1)': round(alvo_rp, 2),
-                    'Alvo Final (1:2)': round(alvo_final, 2),
-                    'MM200': round(mm200, 2),
-                    'Distância (%)': round(distancia_pct, 2),
-                    'RSI (14)': status_rsi,
-                    'Vol Médio (20d Mi)': round(vol_medio_20d, 2)
-                })
+        if pd.isna(mm200_atual):
+            continue
             
-    df_resultados = pd.DataFrame(resultados)
-    if not df_resultados.empty:
-        df_resultados['Dist_Abs'] = df_resultados['Distância (%)'].abs()
-        df_resultados = df_resultados.sort_values(by='Dist_Abs').drop(columns=['Dist_Abs'])
+        distancia_pct = ((preco_atual - mm200_atual) / mm200_atual) * 100
         
-    return df_resultados
+        # 2. Cálculo do RSI (14 períodos)
+        delta = serie_preco.diff()
+        ganho = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        perda = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = ganho / perda
+        rsi_serie = 100 - (100 / (1 + rs))
+        rsi_atual = float(rsi_serie.iloc[-1]) if not pd.isna(rsi_serie.iloc[-1]) else 50.0
+        
+        # 3. Filtros
+        if abs(distancia_pct) <= percentual_limite and rsi_atual <= rsi_maximo:
+            condicao = "🟢 Suporte MM200" if preco_atual >= mm200_atual else "🔴 Resistência MM200"
+            
+            if preco_atual >= mm200_atual and rsi_atual <= 40:
+                diag = "🎯 Compra Forte (MM200 + RSI)"
+            elif preco_atual >= mm200_atual:
+                diag = "✅ Tendência de Alta (Acima MM200)"
+            else:
+                diag = "⚠️ Abaixo da MM200"
+                
+            ticker_limpo = str(ticker).replace(".SA", "")
+            
+            resultados.append({
+                "Ticker": ticker_limpo,
+                "Preço Atual (R$)": round(preco_atual, 2),
+                "MM200 Semanal (R$)": round(mm200_atual, 2),
+                "Distância (%)": f"{distancia_pct:+.2f}%",
+                "RSI (14)": round(rsi_atual, 1),
+                "Condição MM200": condicao,
+                "Diagnóstico": diag,
+                "Gráfico": f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA:{ticker_limpo}"
+            })
+            
+    return pd.DataFrame(resultados)
