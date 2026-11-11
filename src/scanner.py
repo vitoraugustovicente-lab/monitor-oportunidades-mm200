@@ -29,9 +29,25 @@ def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk"):
         return pd.DataFrame(), pd.DataFrame()
 
 
+def gerar_link_tradingview(ticker_original):
+    """
+    Formata o link do TradingView de acordo com o mercado do ticker.
+    """
+    ticker_str = str(ticker_original).strip().upper()
+    
+    if ticker_str.endswith(".SA"):
+        simbolo = f"BMFBOVESPA:{ticker_str.replace('.SA', '')}"
+    elif "-USD" in ticker_str:
+        simbolo = f"CRYPTO:{ticker_str.replace('-USD', 'USD')}"
+    else:
+        simbolo = ticker_str
+        
+    return f"https://br.tradingview.com/chart/?symbol={simbolo}"
+
+
 def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100):
     """
-    Calcula a MM200 Semanal, RSI de 14 períodos e gera diagnósticos.
+    Calcula a MM200 Semanal, RSI de 14 períodos e gera diagnósticos com link do TradingView na 3ª coluna.
     """
     resultados = []
     
@@ -77,16 +93,18 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
                 diag = "⚠️ Abaixo da MM200"
                 
             ticker_limpo = str(ticker).replace(".SA", "")
+            link_tv = gerar_link_tradingview(ticker)
             
+            # Ordem exata das colunas: 1. Ticker | 2. Preço Atual | 3. Gráfico (Botão TradingView)
             resultados.append({
                 "Ticker": ticker_limpo,
-                "Preço Atual (R$)": round(preco_atual, 2),
-                "MM200 Semanal (R$)": round(mm200_atual, 2),
+                "Preço Atual": round(preco_atual, 2),
+                "Gráfico": link_tv,
+                "MM200 Semanal": round(mm200_atual, 2),
                 "Distância (%)": f"{distancia_pct:+.2f}%",
                 "RSI (14)": round(rsi_atual, 1),
                 "Condição MM200": condicao,
-                "Diagnóstico": diag,
-                "Gráfico": f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA:{ticker_limpo}"
+                "Diagnóstico": diag
             })
             
     return pd.DataFrame(resultados)
