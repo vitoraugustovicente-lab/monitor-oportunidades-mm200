@@ -15,13 +15,13 @@ st.set_page_config(
 )
 
 st.title("📈 Monitor Global de Oportunidades (MM200 Semanal)")
-st.markdown("Varredura unificada de todos os mercados (B3, EUA e Cripto) em uma única tela.")
+st.markdown("Varredura unificada de todos os mercados (B3, EUA e Cripto) em uma única tela — Preço Real (sem ajuste de dividendos).")
 
 # ==========================================
 # UNIFICAÇÃO DE TODOS OS ATIVOS E MAPA DE ORIGEM
 # ==========================================
 todos_tickers_unicos = []
-mapa_origem = {}  # Guarda a qual Mercado/Setor cada ticker pertence
+mapa_origem = {}
 
 for mercado, setores in CATEGORIAS.items():
     for setor, lista_ativos in setores.items():
@@ -54,7 +54,7 @@ col2.metric("Total de Ativos Monitorados", len(todos_tickers_unicos))
 col3.metric("Tempo Gráfico", "Semanal (MM200)")
 
 if st.button("🚀 Iniciar Varredura Global (Todos os Ativos)"):
-    with st.spinner(f"Analisando todos os {len(todos_tickers_unicos)} ativos no gráfico semanal... Isso pode levar alguns segundos."):
+    with st.spinner(f"Analisando todos os {len(todos_tickers_unicos)} ativos no gráfico semanal..."):
         dados_fechamento, dados_volume = obter_dados_ativos(
             todos_tickers_unicos, 
             periodo=periodo, 
@@ -70,7 +70,6 @@ if st.button("🚀 Iniciar Varredura Global (Todos os Ativos)"):
             )
             
             if not df_resultado.empty:
-                # Adiciona coluna identificando o Mercado/Setor de origem de cada ativo filtrado
                 def identificar_origem(ticker_tabela):
                     if f"{ticker_tabela}.SA" in mapa_origem:
                         return mapa_origem[f"{ticker_tabela}.SA"]
@@ -78,7 +77,6 @@ if st.button("🚀 Iniciar Varredura Global (Todos os Ativos)"):
 
                 df_resultado.insert(1, "Mercado / Setor", df_resultado["Ticker"].apply(identificar_origem))
                 
-                # Métricas de resumo
                 qtd_compras_fortes = len(df_resultado[df_resultado['Diagnóstico'].str.contains("Compra Forte", na=False)])
                 qtd_suporte = len(df_resultado[df_resultado['Condição MM200'].str.contains("Suporte", na=False)])
                 qtd_resistencia = len(df_resultado[df_resultado['Condição MM200'].str.contains("Resistência", na=False)])
@@ -92,7 +90,6 @@ if st.button("🚀 Iniciar Varredura Global (Todos os Ativos)"):
                 st.markdown("---")
                 st.success(f"Encontradas {len(df_resultado)} oportunidades no total dentro dos critérios selecionados!")
                 
-                # Exibição da tabela única
                 st.dataframe(
                     df_resultado,
                     column_config={
@@ -145,7 +142,13 @@ st.subheader("🔍 Análise Gráfica Individual (Semanal)")
 ticker_grafico = st.selectbox("Selecione qualquer ativo monitorado para visualizar o gráfico:", todos_tickers_unicos)
 
 if ticker_grafico:
-    df_grafico = yf.download(ticker_grafico, period=periodo, interval="1wk", progress=False)
+    df_grafico = yf.download(
+        ticker_grafico, 
+        period=periodo, 
+        interval="1wk", 
+        auto_adjust=False, 
+        progress=False
+    )
     if not df_grafico.empty:
         if isinstance(df_grafico.columns, pd.MultiIndex):
             df_grafico = df_grafico['Close']
