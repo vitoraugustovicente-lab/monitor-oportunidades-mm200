@@ -27,41 +27,52 @@ CATEGORIAS = {
         ]
     },
     "S&P 500": {
-        "Tecnologia": [
-            "AAPL", "MSFT", "NVDA", "AVGO", "CSCO", "ACN", "ORCL", "CRM", "AMD", "IBM",
-            "INTC", "QCOM", "TXN", "NOW", "AMAT", "LRCX", "ADI", "PANW", "SNPS", "CDNS"
+        "Tecnologia (30)": [
+            "AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CRM", "CSCO", "ACN", "AMD", "IBM",
+            "INTC", "QCOM", "TXN", "NOW", "AMAT", "LRCX", "ADI", "MU", "KLAC", "PANW",
+            "SNPS", "CDNS", "APH", "MSI", "ROP", "NXPI", "FTNT", "ADSK", "FICO", "DELL"
         ],
-        "Financeiro": [
-            "JPM", "V", "MA", "BAC", "WFC", "MS", "GS", "C", "BLK", "SPGI", "AXP", "CB",
-            "MMC", "PGR", "USB", "PNC", "TROW", "MET", "AIG"
+        "Financeiro (30)": [
+            "JPM", "V", "MA", "BAC", "WFC", "MS", "GS", "C", "BLK", "SPGI",
+            "AXP", "CB", "MMC", "PGR", "SCHW", "CME", "ICE", "AON", "KKR", "BX",
+            "USB", "PNC", "TFC", "COF", "AIG", "MET", "PRU", "TRV", "ALL", "TROW"
         ],
-        "Saúde e Biotecnologia": [
-            "LLY", "UNH", "JNJ", "MRK", "ABBV", "TMO", "PFE", "DHR", "ABT", "AMGN",
-            "BMY", "GILD", "VRTX", "CVS", "CI", "ISRG", "REGN", "SYK", "BDX"
+        "Saúde e Biotecnologia (30)": [
+            "LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "ABT", "DHR", "PFE", "AMGN",
+            "ISRG", "SYK", "VRTX", "REGN", "BSX", "MDT", "GILD", "BMY", "ELV", "CI",
+            "CVS", "HCA", "ZTS", "BDX", "MCK", "COR", "EW", "IDXX", "IQV", "A"
         ],
-        "Consumo e Varejo": [
-            "AMZN", "WMT", "PG", "HD", "COST", "KO", "PEP", "MCD", "NKE", "PM", "LOW",
-            "SBUX", "TGT", "EL", "CL", "MDLZ", "TJX", "KMB"
+        "Consumo e Varejo (30)": [
+            "AMZN", "WMT", "COST", "HD", "PG", "KO", "PEP", "MCD", "PM", "LOW",
+            "TJX", "NKE", "SBUX", "BKNG", "MDLZ", "CL", "MO", "TGT", "CMG", "MAR",
+            "HLT", "ORLY", "AZO", "ROST", "GM", "F", "KMB", "GIS", "SYY", "EL"
+        ],
+        "Comunicação e Mídia (10)": [
+            "GOOGL", "GOOG", "META", "NFLX", "DIS", "TMUS", "VZ", "T", "CMCSA", "EA"
         ]
     },
     "NASDAQ": {
-        "Megacaps (Top 20)": [
-            "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "GOOG", "META", "TSLA", "AVGO", "ASML",
-            "COST", "PEP", "CSCO", "ADBE", "TMUS", "AMD", "TXN", "AMGN", "INTC", "NFLX"
+        "Megacaps (Top 30)": [
+            "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "GOOG", "META", "AVGO", "TSLA", "COST",
+            "NFLX", "ASML", "AMD", "PEP", "LIN", "AZN", "CSCO", "TMUS", "ADBE", "QCOM",
+            "TXN", "INTU", "AMGN", "ISRG", "AMAT", "CMCSA", "HON", "BKNG", "VRTX", "INTC"
         ],
-        "Inovação e Software": [
-            "CRM", "PANW", "CRWD", "DDOG", "SNOW", "TEAM", "ZS", "NET", "PLTR", "WDAY",
-            "MELI", "PYPL", "ABNB", "BKNG", "INTU", "ROKU"
+        "Inovação, Software e Chips (30)": [
+            "PANW", "CRWD", "SNPS", "CDNS", "KLAC", "LRCX", "MRVL", "MU", "ADI", "NXPI",
+            "FTNT", "WDAY", "TEAM", "DDOG", "ZS", "NET", "PLTR", "SNOW", "MDB", "MELI",
+            "ABNB", "PYPL", "DASH", "TTD", "COIN", "APP", "ARM", "SMCI", "ON", "ROKU"
         ]
     },
     "NYSE": {
-        "Indústria e Infraestrutura": [
-            "GE", "CAT", "BA", "UNP", "HON", "UPS", "RTX", "DE", "LMT", "ETN", "WM",
-            "EMR", "NSC", "GD", "ITW"
+        "Indústria, Defesa e Transporte (25)": [
+            "GE", "CAT", "RTX", "UNP", "HON", "ETN", "BA", "LMT", "DE", "UPS",
+            "ADP", "WM", "GD", "NOC", "ITW", "EMR", "PH", "TT", "CARR", "CSX",
+            "NSC", "FDX", "URI", "JCI", "MMM"
         ],
-        "Energia e Basicos": [
+        "Energia, Materiais e Utilidades (25)": [
             "XOM", "CVX", "COP", "SLB", "EOG", "MPC", "PSX", "VLO", "OXY", "HAL",
-            "LIN", "APD", "NEM", "FCX"
+            "WMB", "KMI", "OKE", "NEE", "SO", "DUK", "CEG", "AEP", "SRE", "LIN",
+            "SHW", "APD", "ECL", "FCX", "NEM"
         ]
     },
     "Criptomoedas": {
