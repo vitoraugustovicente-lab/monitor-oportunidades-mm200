@@ -4,13 +4,15 @@ import numpy as np
 import yfinance as yf
 
 
-def _baixar_bloco(tickers, periodo, intervalo, auto_adjust):
-    """Função auxiliar para baixar um bloco homogêneo de tickers."""
+def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk", auto_adjust=False):
+    """
+    Baixa dados agrupados por ticker (group_by='ticker') para evitar qualquer
+    mistura de colunas ou calendários entre B3, EUA e Criptomoedas.
+    """
     if not tickers:
-        return pd.DataFrame(), pd.DataFrame()
+        return {}, {}
 
-    lista_fech = []
-    lista_vol = []
+    dados_por_ticker = {}
     tamanho_lote = 50
 
     for i in range(0, len(tickers), tamanho_lote):
@@ -21,7 +23,7 @@ def _baixar_bloco(tickers, periodo, intervalo, auto_adjust):
                 period=periodo,
                 interval=intervalo,
                 auto_adjust=auto_adjust,
-                group_by="column",
+                group_by="ticker",
                 threads=True,
                 progress=False
             )
@@ -29,58 +31,26 @@ def _baixar_bloco(tickers, periodo, intervalo, auto_adjust):
             if dados.empty:
                 continue
 
-            if isinstance(dados.columns, pd.MultiIndex):
-                # Garante o uso exclusivo da coluna 'Close' (preço nominal quando auto_adjust=False)
-                fech = dados['Close'].copy()
-                vol = dados['Volume'].copy()
+            if len(lote) == 1:
+                ticker = lote[0]
+                if "Close" in dados.columns:
+                    serie = dados["Close"].dropna().sort_index()
+                    if not serie.empty:
+                        dados_por_ticker[ticker] = serie
             else:
-                fech = dados[['Close']].rename(columns={'Close': lote[0]}).copy()
-                vol = dados[['Volume']].rename(columns={'Volume': lote[0]}).copy()
+                for ticker in lote:
+                    if ticker in dados.columns.get_level_values(0):
+                        df_t = dados[ticker]
+                        if "Close" in df_t.columns:
+                            serie = df_t["Close"].dropna().sort_index()
+                            if not serie.empty:
+                                dados_por_ticker[ticker] = serie
 
-            lista_fech.append(fech)
-            lista_vol.append(vol)
             time.sleep(0.4)
         except Exception as e:
-            print(f"Erro no lote {lote[:3]}: {e}")
+            print(f"Erro ao baixar lote {lote[:3]}: {e}")
 
-    if not lista_fech:
-        return pd.DataFrame(), pd.DataFrame()
-
-    df_f = pd.concat(lista_fech, axis=1)
-    df_v = pd.concat(lista_vol, axis=1)
-
-    df_f = df_f.loc[:, ~df_f.columns.duplicated()]
-    df_v = df_v.loc[:, ~df_v.columns.duplicated()]
-    return df_f, df_v
-
-
-def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk", auto_adjust=False):
-    """
-    Separa Ações/ETFs de Criptomoedas antes do download para evitar conflito de
-    calendário (5 dias vs 7 dias) e garante cálculo nominal consistente.
-    """
-    if not tickers:
-        return pd.DataFrame(), pd.DataFrame()
-
-    tickers_cripto = [t for t in tickers if "-USD" in str(t).upper()]
-    tickers_acoes = [t for t in tickers if "-USD" not in str(t).upper()]
-
-    fech_acoes, vol_acoes = _baixar_bloco(tickers_acoes, periodo, intervalo, auto_adjust)
-    fech_cripto, vol_cripto = _baixar_bloco(tickers_cripto, periodo, intervalo, auto_adjust)
-
-    partes_fech = [df for df in [fech_acoes, fech_cripto] if not df.empty]
-    partes_vol = [df for df in [vol_acoes, vol_cripto] if not df.empty]
-
-    if not partes_fech:
-        return pd.DataFrame(), pd.DataFrame()
-
-    fechamento_total = pd.concat(partes_fech, axis=1)
-    volume_total = pd.concat(partes_vol, axis=1)
-
-    fechamento_total = fechamento_total.loc[:, ~fechamento_total.columns.duplicated()]
-    volume_total = volume_total.loc[:, ~volume_total.columns.duplicated()]
-
-    return fechamento_total, volume_total
+    return dados_por_ticker, {}
 
 
 def gerar_link_tradingview(ticker_original):
@@ -101,28 +71,35 @@ def gerar_link_tradingview(ticker_original):
 
 def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100):
     """
-    Calcula a MM200 Semanal e o RSI(14) sobre a mesma série nominal de fechamento.
+    Calcula a MM200 Semanal e o RSI(14) isoladamente na série histórica de cada ticker.
     """
     resultados = []
 
-    if isinstance(dados_fechamento, pd.Series):
-        dados_fechamento = dados_fechamento.to_frame()
+    if isinstance(dados_fechamento, pd.DataFrame):
+        iterador = {col: dados_fechamento[col].dropna().sort_index() for col in dados_fechamento.columns}
+    else:
+        iterador = dados_fechamento
 
-    for ticker in dados_fechamento.columns:
-        # Remove semanas sem negociação (NaN) específicas daquele ativo
-        serie_preco = dados_fechamento[ticker].dropna()
+    for ticker, serie_bruta in iterador.items():
+        if isinstance(serie_bruta, pd.DataFrame):
+            serie_preco = serie_bruta.iloc[:, 0].dropna().sort_index()
+        else:
+            serie_preco = serie_bruta.dropna().sort_index()
 
-        # Exige mínimo de 200 semanas válidas
+        # Remove eventuais índices duplicados (ex: semana em andamento duplicada pelo Yahoo)
+        serie_preco = serie_preco[~serie_preco.index.duplicated(keep='last')]
+
+        # Exige mínimo de 200 semanas reais de histórico
         if len(serie_preco) < 200:
             continue
 
-        # 1. Cálculo da MM200 Semanal na mesma série nominal do preço atual
+        # 1. Cálculo exato da MM200 Semanal
         mm200_serie = serie_preco.rolling(window=200).mean()
 
         preco_atual = float(serie_preco.iloc[-1])
         mm200_atual = float(mm200_serie.iloc[-1])
 
-        if pd.isna(mm200_atual) or mm200_atual == 0:
+        if pd.isna(mm200_atual) or mm200_atual <= 0:
             continue
 
         distancia_pct = ((preco_atual - mm200_atual) / mm200_atual) * 100
@@ -135,8 +112,8 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
         rsi_serie = 100 - (100 / (1 + rs))
         rsi_atual = float(rsi_serie.iloc[-1]) if not pd.isna(rsi_serie.iloc[-1]) else 50.0
 
-        # 3. Filtros
-        if abs(distancia_pct) <= percentual_limite and rsi_atual <= rsi_maximo:
+        # 3. Filtro rigoroso de proximidade e RSI
+        if abs(distancia_pct) <= float(percentual_limite) and rsi_atual <= float(rsi_maximo):
             condicao = "🟢 Suporte MM200" if preco_atual >= mm200_atual else "🔴 Resistência MM200"
 
             if preco_atual >= mm200_atual and rsi_atual <= 40:
