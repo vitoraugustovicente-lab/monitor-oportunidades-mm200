@@ -62,11 +62,10 @@ if st.button("🚀 Iniciar Varredura Global (Todos os Ativos)"):
             auto_adjust=False
         )
 
-        if not dados_fechamento.empty:
-            # Conta quantos ativos realmente possuem >= 200 semanas válidas
+        if dados_fechamento:
             ativos_validos_200w = sum(
-                1 for col in dados_fechamento.columns
-                if len(dados_fechamento[col].dropna()) >= 200
+                1 for serie in dados_fechamento.values()
+                if len(serie) >= 200
             )
 
             df_resultado = triagem_mm200(
@@ -77,7 +76,7 @@ if st.button("🚀 Iniciar Varredura Global (Todos os Ativos)"):
             )
 
             st.caption(
-                f"📊 Diagnóstico da carga: **{len(dados_fechamento.columns)}** ativos baixados | "
+                f"📊 Diagnóstico da carga: **{len(dados_fechamento)}** ativos baixados | "
                 f"**{ativos_validos_200w}** ativos com histórico completo (≥ 200 semanas)."
             )
 
@@ -168,5 +167,10 @@ if ticker_grafico:
         else:
             df_grafico = df_grafico[['Close']]
 
-        df_grafico['MMA200 Semanal'] = df_grafico.iloc[:, 0].rolling(window=200).mean()
-        st.line_chart(df_grafico)
+        serie_ind = df_grafico.iloc[:, 0].dropna().sort_index()
+        serie_ind = serie_ind[~serie_ind.index.duplicated(keep='last')]
+        df_plot = pd.DataFrame({
+            ticker_grafico: serie_ind,
+            'MMA200 Semanal': serie_ind.rolling(window=200).mean()
+        })
+        st.line_chart(df_plot)
