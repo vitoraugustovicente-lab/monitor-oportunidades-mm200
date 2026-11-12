@@ -5,13 +5,19 @@ import yfinance as yf
 def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk"):
     """
     Baixa dados com histórico longo (5 anos) no tempo gráfico semanal (1wk)
-    para garantir 200 barras para a MM200.
+    e com preço real sem ajuste de dividendos (auto_adjust=False).
     """
     if not tickers:
         return pd.DataFrame(), pd.DataFrame()
         
     try:
-        dados = yf.download(tickers, period=periodo, interval=intervalo, progress=False)
+        dados = yf.download(
+            tickers, 
+            period=periodo, 
+            interval=intervalo, 
+            auto_adjust=False, 
+            progress=False
+        )
         
         if dados.empty:
             return pd.DataFrame(), pd.DataFrame()
@@ -47,11 +53,10 @@ def gerar_link_tradingview(ticker_original):
 
 def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100):
     """
-    Calcula a MM200 Semanal, RSI de 14 períodos e gera diagnósticos com link do TradingView na 3ª coluna.
+    Calcula a MM200 Semanal, RSI de 14 períodos e gera diagnósticos com preço real (não ajustado).
     """
     resultados = []
     
-    # Trata caso a busca tenha retornado apenas um ativo (Series em vez de DataFrame)
     if isinstance(dados_fechamento, pd.Series):
         dados_fechamento = dados_fechamento.to_frame()
         
@@ -62,7 +67,7 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
         if len(serie_preco) < 200:
             continue
             
-        # 1. Cálculo da MM200 Semanal
+        # 1. Cálculo da MM200 Semanal com preço real
         mm200_serie = serie_preco.rolling(window=200).mean()
         
         preco_atual = float(serie_preco.iloc[-1])
@@ -95,7 +100,6 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
             ticker_limpo = str(ticker).replace(".SA", "")
             link_tv = gerar_link_tradingview(ticker)
             
-            # Ordem exata das colunas: 1. Ticker | 2. Preço Atual | 3. Gráfico (Botão TradingView)
             resultados.append({
                 "Ticker": ticker_limpo,
                 "Preço Atual": round(preco_atual, 2),
