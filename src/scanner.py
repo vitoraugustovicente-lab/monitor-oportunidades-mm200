@@ -6,8 +6,8 @@ import yfinance as yf
 
 def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk", auto_adjust=False):
     """
-    Baixa dados agrupados por ticker (group_by='ticker') para evitar qualquer
-    mistura de colunas ou calendários entre B3, EUA e Criptomoedas.
+    Baixa dados diários (1d) e reconstrói as velas semanais fechando na sexta-feira (W-FRI)
+    para ações e domingo (W-SUN) para criptomoedas, alinhando exatamente com o TradingView.
     """
     if not tickers:
         return {}, {}
@@ -18,10 +18,11 @@ def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk", auto_adjust=False
     for i in range(0, len(tickers), tamanho_lote):
         lote = tickers[i:i + tamanho_lote]
         try:
+            # Baixa em 1d para evitar o bug de vela semanal do Yahoo Finance
             dados = yf.download(
                 lote,
                 period=periodo,
-                interval=intervalo,
+                interval="1d",
                 auto_adjust=auto_adjust,
                 group_by="ticker",
                 threads=True,
@@ -34,15 +35,15 @@ def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk", auto_adjust=False
             if len(lote) == 1:
                 ticker = lote[0]
                 if "Close" in dados.columns:
-                    serie = dados["Close"].dropna().sort_index()
-                    if not serie.empty:
+                    serie = _converter_para_semanal(dados["Close"], ticker)
+                    if len(serie) >= 200:
                         dados_por_ticker[ticker] = serie
             else:
                 for ticker in lote:
                     if ticker in dados.columns.get_level_values(0):
                         df_t = dados[ticker]
                         if "Close" in df_t.columns:
-                            serie = df_t["Close"].dropna().sort_index()
+                            serie = _converter_para_semanal(df_t["Close"], ticker)
                             if not serie.empty:
                                 dados_por_ticker[ticker] = serie
 
@@ -51,6 +52,21 @@ def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk", auto_adjust=False
             print(f"Erro ao baixar lote {lote[:3]}: {e}")
 
     return dados_por_ticker, {}
+
+
+def _converter_para_semanal(serie_diaria, ticker):
+    """
+    Converte série diária em fechamento semanal padrão TradingView:
+    - Criptos (-USD): fechamento domingo (W-SUN)
+    - Bolsas (B3/EUA): fechamento sexta-feira (W-FRI)
+    """
+    s = serie_diaria.dropna().sort_index()
+    s = s[~s.index.duplicated(keep="last")]
+    if s.empty:
+        return s
+
+    regra_semana = "W-SUN" if "-USD" in str(ticker).upper() else "W-FRI"
+    return s.resample(regra_semana).last().dropna()
 
 
 def gerar_link_tradingview(ticker_original):
@@ -71,7 +87,7 @@ def gerar_link_tradingview(ticker_original):
 
 def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100):
     """
-    Calcula a MM200 Semanal e o RSI(14) isoladamente na série histórica de cada ticker.
+    Calcula a MM200 Semanal e o RSI(14) sobre as barras semanais consolidadas.
     """
     resultados = []
 
@@ -86,14 +102,12 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
         else:
             serie_preco = serie_bruta.dropna().sort_index()
 
-        # Remove eventuais índices duplicados (ex: semana em andamento duplicada pelo Yahoo)
         serie_preco = serie_preco[~serie_preco.index.duplicated(keep='last')]
 
-        # Exige mínimo de 200 semanas reais de histórico
         if len(serie_preco) < 200:
             continue
 
-        # 1. Cálculo exato da MM200 Semanal
+        # 1. Cálculo da MM200 Semanal
         mm200_serie = serie_preco.rolling(window=200).mean()
 
         preco_atual = float(serie_preco.iloc[-1])
