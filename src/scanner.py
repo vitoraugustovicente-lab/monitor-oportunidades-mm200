@@ -1,136 +1,118 @@
-import io
-from concurrent.futures import ThreadPoolExecutor
 import requests
 import pandas as pd
-import yfinance as yf
 
 
-def _baixar_csv_stooq(ticker_original):
+def _converter_para_simbolo_tv(ticker_original):
     """
-    Baixa histórico semanal 100% nominal (sem ajuste de dividendos) do Stooq
-    para ações da B3 (.SA -> .br) e EUA (.us), sem necessidade de token.
+    Converte os tickers do settings.py para o formato oficial do TradingView.
     """
     t = str(ticker_original).strip().upper()
     if t.endswith(".SA"):
-        simbolo = f"{t.replace('.SA', '').lower()}.br"
+        return [f"BMFBOVESPA:{t.replace('.SA', '')}"]
+    elif "-USD" in t:
+        return [f"CRYPTO:{t.replace('-USD', 'USD')}"]
     else:
-        # Stooq usa hífen em classes de ações como BRK-B -> brk-b.us
-        simbolo = f"{t.lower()}.us"
-
-    url = f"https://stooq.com/q/d/l/?s={simbolo}&i=w"
-    headers = {"User-Agent": "Mozilla/5.0"}
-
-    try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code != 200 or "Date,Open" not in resp.text:
-            return ticker_original, pd.Series(dtype=float)
-
-        df = pd.read_csv(io.StringIO(resp.text))
-        if df.empty or "Close" not in df.columns:
-            return ticker_original, pd.Series(dtype=float)
-
-        df["Date"] = pd.to_datetime(df["Date"])
-        serie = df.set_index("Date")["Close"].dropna().sort_index()
-        serie = serie[~serie.index.duplicated(keep="last")]
-        return ticker_original, serie
-    except Exception:
-        return ticker_original, pd.Series(dtype=float)
+        # Como ações EUA podem estar na NASDAQ ou NYSE, retorna ambas possibilidades
+        return [f"NASDAQ:{t}", f"NYSE:{t}", f"AMEX:{t}"]
 
 
 def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk", auto_adjust=False):
     """
-    - Ações B3 e EUA: Stooq (100% nominal, sem ajuste de dividendos, sem token)
-    - Criptomoedas (-USD): yfinance (100% nominal, pois não há dividendos)
+    Consulta o endpoint oficial do TradingView Scanner em uma única requisição em lote.
+    Retorna preço atual nominal, SMA200 Semanal e RSI(14) Semanal já calculados.
     """
     if not tickers:
         return {}, {}
 
+    mapa_simbolo_para_original = {}
+    todos_simbolos_tv = []
+
+    for t in tickers:
+        simbolos = _converter_para_simbolo_tv(t)
+        for s in simbolos:
+            mapa_simbolo_para_original[s] = t
+            todos_simbolos_tv.append(s)
+
+    url = "https://scanner.tradingview.com/global/scan"
+    payload = {
+        "symbols": {
+            "tickers": todos_simbolos_tv,
+            "query": {"types": []}
+        },
+        "columns": [
+            "close",        # Preço atual nominal
+            "SMA200|1W",    # Média Móvel Simples de 200 semanas (nominal)
+            "RSI|1W"        # RSI 14 no gráfico semanal
+        ]
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Content-Type": "application/json"
+    }
+
     dados_por_ticker = {}
 
-    tickers_cripto = [t for t in tickers if "-USD" in str(t).upper()]
-    tickers_acoes = [t for t in tickers if t not in tickers_cripto]
-
-    # 1. Criptomoedas via yfinance
-    if tickers_cripto:
-        try:
-            dados_c = yf.download(
-                tickers_cripto,
-                period=periodo,
-                interval="1wk",
-                group_by="ticker",
-                threads=True,
-                progress=False
-            )
-            if not dados_c.empty:
-                for t in tickers_cripto:
-                    if t in dados_c.columns.get_level_values(0):
-                        s = dados_c[t]["Close"].dropna().sort_index()
-                        if not s.empty:
-                            dados_por_ticker[t] = s[~s.index.duplicated(keep="last")]
-        except Exception:
-            pass
-
-    # 2. Ações B3 e EUA em paralelo via Stooq (10 workers simultâneos)
-    if tickers_acoes:
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            resultados_stooq = executor.map(_baixar_csv_stooq, tickers_acoes)
-            for ticker, serie in resultados_stooq:
-                if not serie.empty:
-                    dados_por_ticker[ticker] = serie
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=15)
+        if resp.status_code == 200:
+            resultados_api = resp.json().get("data", [])
+            for item in resultados_api:
+                simbolo_tv = item.get("s")
+                valores = item.get("d", [])
+                if len(valores) >= 3 and valores[0] is not None and valores[1] is not None:
+                    ticker_orig = mapa_simbolo_para_original.get(simbolo_tv)
+                    if ticker_orig and ticker_orig not in dados_por_ticker:
+                        dados_por_ticker[ticker_orig] = {
+                            "simbolo_tv": simbolo_tv,
+                            "preco": float(valores[0]),
+                            "mm200": float(valores[1]),
+                            "rsi": float(valores[2]) if valores[2] is not None else 50.0
+                        }
+    except Exception as e:
+        print(f"Erro ao consultar TradingView Scanner: {e}")
 
     return dados_por_ticker, {}
 
 
-def gerar_link_tradingview(ticker_original):
-    ticker_str = str(ticker_original).strip().upper()
-    if ticker_str.endswith(".SA"):
-        simbolo = f"BMFBOVESPA:{ticker_str.replace('.SA', '')}"
-    elif "-USD" in ticker_str:
-        simbolo = f"CRYPTO:{ticker_str.replace('-USD', 'USD')}"
+def gerar_link_tradingview(simbolo_tv_ou_ticker):
+    """
+    Gera o link direto do gráfico no TradingView com o prefixo exato da bolsa.
+    """
+    s = str(simbolo_tv_ou_ticker).strip().upper()
+    if ":" in s:
+        simbolo = s
+    elif s.endswith(".SA"):
+        simbolo = f"BMFBOVESPA:{s.replace('.SA', '')}"
+    elif "-USD" in s:
+        simbolo = f"CRYPTO:{s.replace('-USD', 'USD')}"
     else:
-        simbolo = ticker_str
+        simbolo = s
     return f"https://br.tradingview.com/chart/?symbol={simbolo}"
 
 
-def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_maximo=100):
+def triagem_mm200(dados_ativos, dados_volume, percentual_limite=5.0, rsi_maximo=100):
+    """
+    Filtra os ativos com base nos valores nominais e na SMA200 Semanal retornados pelo TradingView.
+    """
     resultados = []
-    iterador = (
-        {col: dados_fechamento[col].dropna().sort_index() for col in dados_fechamento.columns}
-        if isinstance(dados_fechamento, pd.DataFrame)
-        else dados_fechamento
-    )
 
-    for ticker, serie_bruta in iterador.items():
-        serie_preco = (
-            serie_bruta.iloc[:, 0].dropna().sort_index()
-            if isinstance(serie_bruta, pd.DataFrame)
-            else serie_bruta.dropna().sort_index()
-        )
-        serie_preco = serie_preco[~serie_preco.index.duplicated(keep="last")]
+    if not isinstance(dados_ativos, dict):
+        return pd.DataFrame(resultados)
 
-        if len(serie_preco) < 200:
-            continue
+    for ticker, info in dados_ativos.items():
+        preco_atual = info.get("preco")
+        mm200_atual = info.get("mm200")
+        rsi_atual = info.get("rsi", 50.0)
+        simbolo_tv = info.get("simbolo_tv", ticker)
 
-        # Cálculo exato da MM200 Semanal sobre série 100% nominal
-        mm200_serie = serie_preco.rolling(window=200).mean()
-        preco_atual = float(serie_preco.iloc[-1])
-        mm200_atual = float(mm200_serie.iloc[-1])
-
-        if pd.isna(mm200_atual) or mm200_atual <= 0:
+        if not preco_atual or not mm200_atual or mm200_atual <= 0:
             continue
 
         distancia_pct = ((preco_atual - mm200_atual) / mm200_atual) * 100
 
-        # Cálculo do RSI (14 períodos)
-        delta = serie_preco.diff()
-        ganho = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        perda = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = ganho / perda
-        rsi_serie = 100 - (100 / (1 + rs))
-        rsi_atual = float(rsi_serie.iloc[-1]) if not pd.isna(rsi_serie.iloc[-1]) else 50.0
-
         if abs(distancia_pct) <= float(percentual_limite) and rsi_atual <= float(rsi_maximo):
             condicao = "🟢 Suporte MM200" if preco_atual >= mm200_atual else "🔴 Resistência MM200"
+
             if preco_atual >= mm200_atual and rsi_atual <= 40:
                 diag = "🎯 Compra Forte (MM200 + RSI)"
             elif preco_atual >= mm200_atual:
@@ -142,7 +124,7 @@ def triagem_mm200(dados_fechamento, dados_volume, percentual_limite=5.0, rsi_max
             resultados.append({
                 "Ticker": ticker_limpo,
                 "Preço Atual": round(preco_atual, 2),
-                "Gráfico": gerar_link_tradingview(ticker),
+                "Gráfico": gerar_link_tradingview(simbolo_tv),
                 "MM200 Semanal": round(mm200_atual, 2),
                 "Distância (%)": f"{distancia_pct:+.2f}%",
                 "RSI (14)": round(rsi_atual, 1),
