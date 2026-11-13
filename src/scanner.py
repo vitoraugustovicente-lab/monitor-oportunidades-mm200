@@ -4,22 +4,23 @@ import pandas as pd
 
 def _converter_para_simbolo_tv(ticker_original):
     """
-    Converte os tickers do settings.py para o formato oficial do TradingView.
+    Converte os tickers do settings.py para os formatos oficiais do TradingView
+    cobrindo B3, EUA (NASDAQ/NYSE/AMEX) e Criptomoedas.
     """
     t = str(ticker_original).strip().upper()
     if t.endswith(".SA"):
         return [f"BMFBOVESPA:{t.replace('.SA', '')}"]
     elif "-USD" in t:
-        return [f"CRYPTO:{t.replace('-USD', 'USD')}"]
+        base = t.replace("-USD", "")
+        return [f"CRYPTO:{base}USD", f"BINANCE:{base}USDT", f"COINBASE:{base}USD"]
     else:
-        # Como ações EUA podem estar na NASDAQ ou NYSE, retorna ambas possibilidades
         return [f"NASDAQ:{t}", f"NYSE:{t}", f"AMEX:{t}"]
 
 
 def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk", auto_adjust=False):
     """
-    Consulta o endpoint oficial do TradingView Scanner em uma única requisição em lote.
-    Retorna preço atual nominal, SMA200 Semanal e RSI(14) Semanal já calculados.
+    Consulta exclusivamente o endpoint do TradingView Scanner em lote.
+    Retorna preço atual, SMA200 Semanal e RSI(14) Semanal para todos os mercados.
     """
     if not tickers:
         return {}, {}
@@ -40,8 +41,8 @@ def obter_dados_ativos(tickers, periodo="5y", intervalo="1wk", auto_adjust=False
             "query": {"types": []}
         },
         "columns": [
-            "close",        # Preço atual nominal
-            "SMA200|1W",    # Média Móvel Simples de 200 semanas (nominal)
+            "close",        # Preço atual
+            "SMA200|1W",    # Média Móvel Simples de 200 semanas
             "RSI|1W"        # RSI 14 no gráfico semanal
         ]
     }
@@ -92,7 +93,7 @@ def gerar_link_tradingview(simbolo_tv_ou_ticker):
 
 def triagem_mm200(dados_ativos, dados_volume, percentual_limite=5.0, rsi_maximo=100):
     """
-    Filtra os ativos com base nos valores nominais e na SMA200 Semanal retornados pelo TradingView.
+    Filtra os ativos com base nos dados retornados pelo TradingView Scanner.
     """
     resultados = []
 
