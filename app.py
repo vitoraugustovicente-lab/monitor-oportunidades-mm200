@@ -2,10 +2,10 @@ import datetime
 import io
 import pandas as pd
 import streamlit as st
-import yfinance as yf
+import streamlit.components.v1 as components
 
 from config.settings import CATEGORIAS
-from src.scanner import obter_dados_ativos, triagem_mm200
+from src.scanner import obter_dados_ativos, triagem_mm200, _converter_para_simbolo_tv
 
 # Configuração da página
 st.set_page_config(
@@ -54,7 +54,7 @@ col2.metric("Total de Ativos Cadastrados", len(todos_tickers_unicos))
 col3.metric("Base de Cálculo", "Nominal (Sem Dividendos)")
 
 if st.button("🚀 Iniciar Varredura Global (Todos os Ativos)"):
-    with st.spinner(f"Baixando e analisando os {len(todos_tickers_unicos)} ativos em lotes... Aguarde ~20 segundos."):
+    with st.spinner(f"Buscando velas semanais nominais dos {len(todos_tickers_unicos)} ativos no TradingView..."):
         dados_fechamento, dados_volume = obter_dados_ativos(
             todos_tickers_unicos,
             periodo=periodo,
@@ -62,11 +62,12 @@ if st.button("🚀 Iniciar Varredura Global (Todos os Ativos)"):
             auto_adjust=False
         )
 
-       if dados_fechamento:
+        if dados_fechamento:
             ativos_validos_200w = sum(
                 1 for serie in dados_fechamento.values()
                 if len(serie) >= 200
             )
+
             df_resultado = triagem_mm200(
                 dados_fechamento,
                 dados_volume,
@@ -145,31 +146,35 @@ if st.button("🚀 Iniciar Varredura Global (Todos os Ativos)"):
             st.error("Não foi possível carregar os dados dos ativos no momento. Tente novamente.")
 
 # ==========================================
-# VISUALIZAÇÃO GRÁFICA INDIVIDUAL
+# VISUALIZAÇÃO GRÁFICA INDIVIDUAL (TRADINGVIEW)
 # ==========================================
 st.markdown("---")
-st.subheader("🔍 Análise Gráfica Individual (Semanal)")
+st.subheader("🔍 Gráfico Interativo TradingView (Semanal + MM200)")
 ticker_grafico = st.selectbox("Selecione qualquer ativo monitorado para visualizar o gráfico:", todos_tickers_unicos)
 
 if ticker_grafico:
-    df_grafico = yf.download(
-        ticker_grafico,
-        period=periodo,
-        interval="1wk",
-        auto_adjust=False,
-        progress=False
-    )
-    if not df_grafico.empty:
-        if isinstance(df_grafico.columns, pd.MultiIndex):
-            df_grafico = df_grafico['Close']
-            df_grafico.columns = [ticker_grafico]
-        else:
-            df_grafico = df_grafico[['Close']]
-
-        serie_ind = df_grafico.iloc[:, 0].dropna().sort_index()
-        serie_ind = serie_ind[~serie_ind.index.duplicated(keep='last')]
-        df_plot = pd.DataFrame({
-            ticker_grafico: serie_ind,
-            'MMA200 Semanal': serie_ind.rolling(window=200).mean()
-        })
-        st.line_chart(df_plot)
+    simbolo_widget = _converter_para_simbolo_tv(ticker_grafico)
+    widget_html = f"""
+    <div class="tradingview-widget-container" style="height:500px;width:100%">
+      <div id="tradingview_chart" style="height:500px;width:100%"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget({{
+        "autosize": true,
+        "symbol": "{simbolo_widget}",
+        "interval": "W",
+        "timezone": "America/Sao_Paulo",
+        "theme": "light",
+        "style": "1",
+        "locale": "br",
+        "enable_publishing": false,
+        "allow_symbol_change": true,
+        "studies": [
+          {{"id": "MASimple@tv-basicstudies", "inputs": {{"length": 200}}}}
+        ],
+        "container_id": "tradingview_chart"
+      }});
+      </script>
+    </div>
+    """
+    components.html(widget_html, height=510)
