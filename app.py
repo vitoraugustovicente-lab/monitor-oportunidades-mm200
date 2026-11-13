@@ -62,9 +62,11 @@ if st.button("🚀 Iniciar Varredura Global (Todos os Ativos)"):
             auto_adjust=False
         )
 
-        if dados_fechamento:
-            ativos_validos_200w = len(dados_fechamento)
-
+       if dados_fechamento:
+            ativos_validos_200w = sum(
+                1 for serie in dados_fechamento.values()
+                if len(serie) >= 200
+            )
             df_resultado = triagem_mm200(
                 dados_fechamento,
                 dados_volume,
